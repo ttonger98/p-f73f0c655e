@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex" />
+  <meta name="referrer" content="no-referrer" />
+  <meta name="theme-color" content="#111827" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23111827'/%3E%3Cpath d='M14 50 50 14M14 14l36 36' stroke='%23f9fafb' stroke-width='2'/%3E%3Ccircle cx='32' cy='32' r='8' fill='%23f6c348'/%3E%3C/svg%3E" />
+  <title>Private preview</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #111827; }
+    body { color: #f9fafb; font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; }
+    #app { width: 100%; height: 100%; border: 0; opacity: 0; background: #f5f2eb; transition: opacity 180ms ease; }
+    #app.ready { opacity: 1; }
+    .status {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      text-align: center;
+      background:
+        radial-gradient(circle at 20% 10%, rgba(40, 73, 216, 0.22), transparent 24rem),
+        #111827;
+      transition: opacity 180ms ease, visibility 180ms ease;
+    }
+    .status.hidden { opacity: 0; visibility: hidden; }
+    .status-card { width: min(420px, 100%); }
+    .mark {
+      width: 46px;
+      height: 46px;
+      display: inline-grid;
+      place-items: center;
+      margin-bottom: 18px;
+      border: 1px solid rgba(255,255,255,.24);
+      border-radius: 50%;
+      color: #f6c348;
+      font-size: 22px;
+    }
+    h1 { margin: 0 0 8px; font-size: 20px; font-weight: 650; }
+    p { margin: 0; color: rgba(255,255,255,.58); font-size: 13px; line-height: 1.7; }
+    .spinner {
+      width: 22px;
+      height: 22px;
+      margin: 0 auto 18px;
+      border: 2px solid rgba(255,255,255,.18);
+      border-top-color: #f6c348;
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="status" id="status">
+    <div class="status-card">
+      <div id="status-mark" class="spinner" aria-hidden="true"></div>
+      <h1 id="status-title">正在打开私人预览</h1>
+      <p id="status-copy">内容仅通过分享链接访问。</p>
+    </div>
+  </div>
+  <iframe id="app" title="ZOMETOOL 作品圈线上创作活动调研"></iframe>
+  <script>
+    (() => {
+      const decodeBase64Url = (value) => {
+        const normalized = value.replaceAll("-", "+").replaceAll("_", "/");
+        const padded = normalized + "=".repeat((4 - normalized.length % 4) % 4);
+        return Uint8Array.from(atob(padded), (char) => char.charCodeAt(0));
+      };
+
+      const showError = (title, copy) => {
+        const mark = document.getElementById("status-mark");
+        mark.className = "mark";
+        mark.textContent = "×";
+        document.getElementById("status-title").textContent = title;
+        document.getElementById("status-copy").textContent = copy;
+      };
+
+      const load = async () => {
+        const params = new URLSearchParams(location.hash.slice(1));
+        const encodedKey = params.get("k");
+        if (!encodedKey) {
+          showError("需要通过分享链接打开", "直接访问不会显示任何调研内容。");
+          return;
+        }
+
+        try {
+          const response = await fetch("./payload.bin", { cache: "no-store" });
+          if (!response.ok) throw new Error("payload unavailable");
+          const bundle = new Uint8Array(await response.arrayBuffer());
+          const iv = bundle.slice(0, 12);
+          const encrypted = bundle.slice(12);
+          const key = await crypto.subtle.importKey(
+            "raw",
+            decodeBase64Url(encodedKey),
+            "AES-GCM",
+            false,
+            ["decrypt"]
+          );
+          const plaintext = await crypto.subtle.decrypt(
+            { name: "AES-GCM", iv, tagLength: 128 },
+            key,
+            encrypted
+          );
+          const objectUrl = URL.createObjectURL(
+            new Blob([plaintext], { type: "text/html" })
+          );
+          const frame = document.getElementById("app");
+          frame.addEventListener("load", () => {
+            frame.classList.add("ready");
+            document.getElementById("status").classList.add("hidden");
+            URL.revokeObjectURL(objectUrl);
+          }, { once: true });
+          frame.src = objectUrl;
+        } catch (error) {
+          console.error(error);
+          showError("链接无效或内容不可用", "请重新获取完整的分享链接。");
+        }
+      };
+
+      load();
+    })();
+  </script>
+</body>
+</html>
